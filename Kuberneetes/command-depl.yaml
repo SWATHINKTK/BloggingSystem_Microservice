@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: command-depl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: command
+  template:
+    metadata:
+      labels:
+        app: command
+    spec:
+      containers:
+        - name: command
+          image: swathin10134/command
+
+---
+
+apiVersion: v1 
+kind: Service
+metadata:
+  name: command-srv
+spec:
+  selector:
+    app: command
+  ports:
+    - name: command
+      protocol: TCP
+      port: 4001
+      targetPort: 4001  

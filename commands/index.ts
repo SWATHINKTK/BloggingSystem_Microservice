@@ -2,6 +2,7 @@ import express,{Request,Response} from 'express';
 import cors from 'cors';
 import crypto,{randomBytes} from 'crypto';
 import axios from 'axios';
+import { rabbitMQConnect } from './rabbitmq/rabbitmqConnection';
 
 const app = express();
 
@@ -42,51 +43,57 @@ app.post('/posts/:id/comments',async(req:Request,res:Response) => {
     
     commentsByPostId[req.params.id] = comments;
 
-    await axios.post('http://localhost:5000/events',{
-        type:'CommandCreated',
-        data:{
-            id,
-            content,
-            postID:req.params.id,
-            status:Status.PENDING
-        }
-    }).catch((err):void => {
-        console.log(err)
-    })
+    const exchange = 'commentExchange';
+    const queue1 = 'commandStoring';
+    const queue2 = 'commandModeration';
+    
+
+    const { connection, channel} = await rabbitMQConnect();
+
+    await channel.assertExchange(exchange,'fanout',{durable:true});
+    
+    await channel.assertQueue(queue1,{durable:true});
+    await channel.assertQueue(queue2,{durable:true});
+
+    await channel.bindQueue(queue1,exchange,"");
+    await channel.bindQueue(queue2,exchange,"");
+
+    const data = {
+        id,
+        content,
+        postID:req.params.id,
+        status:Status.PENDING
+    };
+
+    await channel.publish(exchange,"",Buffer.from(JSON.stringify(data)));
+
 
     res.status(201).send(comments);
 
 })
 
-app.post('/events',async(req,res) => {
-    const { type , data } = req.body;
-    console.log(type,"hello")
+async function commandModerated() {
+    const { connection, channel } = await rabbitMQConnect();
+    const newQueue1 = 'modifiedqueue1'
 
-    if(type == 'CommandModerated'){
-        const { id, content, postId, status } = data;
-        let commands =  commentsByPostId[data.postId] ;
-        let command = commands.find(c => c.id == data.id)
-        if(command) 
-            command.status = data.status;
+    channel.consume(newQueue1,(msg) => {
+        if(msg != null){
+            const msgContent = msg?.content.toString();
+            const data = JSON.parse(msgContent);
+            const { id, content, postId, status } = data;
+            let commands =  commentsByPostId[data.postId] ;
+            let command = commands.find(c => c.id == data.id)
+            if(command) 
+                command.status = data.status;
+            channel.ack(msg)
 
-        await axios.post('http://localhost:5000/events',{
-            type:'StatusUpdated',
-            data:{
-                id,
-                content,
-                postId:postId,
-                status:command?.status
-            }
-        }).catch((err):void => {
-            console.log(err)
-        })
-
+        }
         
-        console.log("alll",commentsByPostId)
-    }
+    })
 
-    res.send({});
-})
+}
+
+commandModerated();
 
 
 app.listen(4001,() => {

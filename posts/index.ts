@@ -34,33 +34,22 @@ app.post('/posts',async(req,res) => {
 
     const exchange = 'Post';
     const queue = 'postData';
-    const bindingKey = 'routingkey';
+    const routingkey = 'routingkey';
 
     // Exchange & Queue creation.Then Binding this Queue & Exchange
     const { connection, channel } =await rabbitMQConnect();
     await channel.assertExchange(exchange,'direct',{durable:true});
     await channel.assertQueue(queue,{durable:true});
-    await channel.bindQueue(queue,exchange,bindingKey);
+    await channel.bindQueue(queue,exchange,routingkey);
 
     // RoutingKey to send a Message to an Exchange
-    const routingkey = 'routingkey';
     await channel.publish(exchange,routingkey,Buffer.from(JSON.stringify({id,title})))
 
     
-    // await axios.post('http://localhost:5000/events',{
-    //     type:'PostCreated',
-    //     data:{
-    //         id,title
-    //     }
-    // }).catch(err => console.log(err))
     res.status(201).send(posts[id]);
 
 })
 
-app.post('/events',(req,res) => {
-    console.log('PostReceived',req.body.type);
-    res.send({});
-})
 
 app.listen(4000,() => {
     console.log(`server is running at http://localhost:4000`);

@@ -1,15 +1,15 @@
 import amqp, { Channel, Connection } from 'amqplib';
 
-const rabbitMQConnect = async():Promise< { connection:Connection, channel:Channel } >=> {
+const rabbitMQConnect = async():Promise<{ connection:Connection, channel:Channel}> => {
     try {
         const connection = await amqp.connect('amqp://localhost:5672');
         const channel = await connection.createChannel();
         
-        return { connection, channel}
+        return { connection, channel };
     } catch (error) {
-        console.log("Rabbitmq Connection Error : ",error);
+        console.log('rabbitmq conenction error : ', error);
         throw error;
     }
 }
 
-export { rabbitMQConnect }
+export { rabbitMQConnect };

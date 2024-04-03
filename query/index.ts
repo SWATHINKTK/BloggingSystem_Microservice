@@ -38,49 +38,10 @@ enum Status{
 const posts:Posts = {}
 
 
-const handleEvents = (type:string, data:{[key:string]:any}) => {
-    if(type === 'PostCreated'){
-        const { id, title } = data;
-        posts[id] = {id, title, comments:[]}
-    }
-
-    if(type === 'CommandCreated'){
-        const { id, content, postID, status } = data;
-
-        const post = posts[postID];
-        post.comments.push({
-            id,
-            content,
-            status:Status.PENDING
-        });
-    }
-
-    if(type == 'StatusUpdated'){
-        const {id, postId, content, status} = data;
-
-        let post =  posts[postId] ;
-        let comment = post.comments.find(c => c.id == id);
-
-        if(comment) 
-            comment.status = status;
-
-        // console.log(posts[postId].comments)
-    }
-
-}
 
 
 app.get('/posts',(req,res)=>{
     res.send(posts)
-})
-
-app.post('/events',(req,res)=>{
-    const { type , data } = req.body;
-
-    // events coming from event bus is handled using septate function
-    handleEvents(type,data);
-
-    res.send({});
 })
 
 
@@ -88,16 +49,11 @@ app.post('/events',(req,res)=>{
 // Consuming Post Message from 
 async function setupPost() {
     try {
-        const exchange = 'Post';
-        const queue = 'postData';
-        const bindingKey = 'routingkey';
-    
-        // Exchange & Queue creation.Then Binding this Queue & Exchange
-        const { connection, channel } =await rabbitMQConnect();
-        await channel.assertExchange(exchange,'direct',{durable:true});
-        await channel.assertQueue(queue,{durable:true});
-        await channel.bindQueue(queue,exchange,bindingKey);
+    const queue = 'postData';
 
+
+    // Exchange & Queue creation.Then Binding this Queue & Exchange
+    const { connection, channel } =await rabbitMQConnect();
         // Consuming Message
         channel.consume(queue, (msg) => {
             if(msg !== null){
@@ -105,7 +61,7 @@ async function setupPost() {
                 const msgContent = msg.content.toString();
                 const { id, title } = JSON.parse(msgContent);
                 posts[id] = {id, title, comments:[]};
-                channel.ack(msg);
+                channel.ack(msg)
             }
         })
     } catch (error) {
@@ -114,16 +70,61 @@ async function setupPost() {
 }
 setupPost();
 
+
+async function commandMessage() {
+    const queue1 = 'commandStoring';
+
+    const { connection, channel} = await rabbitMQConnect();
+
+    channel.consume(queue1,(msg) => {
+        if(msg != null){
+            console.log('message Recevied',msg.content.toString());
+            const msgContent = msg.content.toString();
+            const data = JSON.parse(msgContent);
+            const { id, content, postID, status } = data;
+
+            const post = posts[postID];
+            post.comments.push({
+                id,
+                content,
+                status:Status.PENDING
+            });
+
+            channel.ack(msg)
+
+
+        }
+    })
+
+}
+commandMessage();
+
+
+async function commandModerated() {
+    const { connection, channel } = await rabbitMQConnect();
+    const newQueue1 = 'modifiedqueue2'
+
+    channel.consume(newQueue1,(msg) => {
+        if(msg != null){
+            const msgContent = msg?.content.toString();
+            const data = JSON.parse(msgContent);
+            const {id, postId, content, status} = data;
+
+            let post =  posts[postId] ;
+            if(post){
+                let comment = post.comments.find(c => c.id == id);
+    
+                if(comment) 
+                    comment.status = status;
+            }
+            channel.ack(msg)
+        }
+    })
+
+}
+
+commandModerated();
+
 app.listen(4002,async()=>{
     console.log(`Server is running @  http://localhost:4002`);
-
-    const res = await axios.get('http://localhost:5000/events').catch(er=> console.log(er))
-
-    for(let event of res?.data){
-        // console.log('Response',event)
-        handleEvents(event.type, event.data);
-    }
-
-    // console.log("ALL",posts)
-
 })
